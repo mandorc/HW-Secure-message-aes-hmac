@@ -1,20 +1,35 @@
+
+import java.util.concurrent.ThreadLocalRandom;
+import javax.swing.JDesktopPane;
+import javax.swing.JOptionPane;
+
 /*
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JFrame.java to edit this template
  */
-
 /**
  *
  * @author arman
  */
 public class MainInterface extends javax.swing.JFrame {
 
-    /**
-     * Creates new form MainInterface
-     */
+    public static JDesktopPane jDesktopPane_menu;
+
     public MainInterface() {
         initComponents();
         this.setLocationRelativeTo(null);
+
+        this.setExtendedState(this.MAXIMIZED_BOTH);
+        this.setLocationRelativeTo(null);
+        this.setTitle("Sistema de Ventas");
+
+        this.setLayout(null);
+        jDesktopPane_menu = new JDesktopPane();
+
+        int ancho = java.awt.Toolkit.getDefaultToolkit().getScreenSize().width;
+        int alto = java.awt.Toolkit.getDefaultToolkit().getScreenSize().height;
+        this.jDesktopPane_menu.setBounds(0, 0, ancho, (alto - 110));
+        this.add(jDesktopPane_menu);
     }
 
     /**
@@ -26,62 +41,87 @@ public class MainInterface extends javax.swing.JFrame {
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
 
-        jPanel1 = new javax.swing.JPanel();
-        jPanel2 = new javax.swing.JPanel();
+        jMenuBar1 = new javax.swing.JMenuBar();
+        jMenu1 = new javax.swing.JMenu();
+        adClientButton = new javax.swing.JMenuItem();
+        jMenu2 = new javax.swing.JMenu();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
-        jPanel1.setBackground(new java.awt.Color(255, 255, 255));
-        jPanel1.setPreferredSize(new java.awt.Dimension(226, 226));
+        jMenu1.setText("Archivo");
 
-        javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
-        jPanel1.setLayout(jPanel1Layout);
-        jPanel1Layout.setHorizontalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 226, Short.MAX_VALUE)
-        );
-        jPanel1Layout.setVerticalGroup(
-            jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 226, Short.MAX_VALUE)
-        );
+        adClientButton.setText("Agregar cliente");
+        adClientButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                adClientButtonActionPerformed(evt);
+            }
+        });
+        jMenu1.add(adClientButton);
 
-        jPanel2.setBackground(new java.awt.Color(255, 255, 255));
-        jPanel2.setPreferredSize(new java.awt.Dimension(226, 226));
+        jMenuBar1.add(jMenu1);
 
-        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
-        jPanel2.setLayout(jPanel2Layout);
-        jPanel2Layout.setHorizontalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 226, Short.MAX_VALUE)
-        );
-        jPanel2Layout.setVerticalGroup(
-            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 226, Short.MAX_VALUE)
-        );
+        jMenu2.setText("Servicios");
+        jMenuBar1.add(jMenu2);
+
+        setJMenuBar(jMenuBar1);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(layout.createSequentialGroup()
-                .addGap(21, 21, 21)
-                .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 262, Short.MAX_VALUE)
-                .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(32, 32, 32))
+            .addGap(0, 767, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(layout.createSequentialGroup()
-                .addGap(73, 73, 73)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                    .addComponent(jPanel2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(185, Short.MAX_VALUE))
+            .addGap(0, 461, Short.MAX_VALUE)
         );
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
+
+    private void adClientButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_adClientButtonActionPerformed
+        // 1) Pedir nombre (una sola palabra, solo letras)
+        String nombre;
+        while (true) {
+            nombre = JOptionPane.showInputDialog(
+                    this,
+                    "Nombre del cliente (una sola palabra):",
+                    "Nuevo cliente",
+                    JOptionPane.QUESTION_MESSAGE
+            );
+
+            if (nombre == null) {
+                // Canceló: no abrimos nada
+                return;
+            }
+
+            nombre = nombre.trim();
+
+            // Acepta letras con acentos y ñ, sin espacios ni números
+            if (nombre.matches("(?i)^[\\p{L}]+$")) {
+                break;
+            }
+
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Escribe solo un nombre (sin espacios ni números).",
+                    "Dato inválido",
+                    JOptionPane.WARNING_MESSAGE
+            );
+        }
+
+        // 2) Generar 5 dígitos aleatorios (00000–99999)
+        int n = ThreadLocalRandom.current().nextInt(100000);
+        String sufijo = String.format("%05d", n);
+
+        // 3) Construir ID (puedes quitar .toLowerCase() si quieres respetar mayúsculas)
+        String id = nombre.toLowerCase() + sufijo;
+
+        // 4) Crear y mostrar el Internal Frame
+        FrameClient frameCliente = new FrameClient(nombre, id); // <-- requiere ese constructor
+        jDesktopPane_menu.add(frameCliente);
+        frameCliente.setVisible(true);
+    }//GEN-LAST:event_adClientButtonActionPerformed
 
     /**
      * @param args the command line arguments
@@ -119,7 +159,9 @@ public class MainInterface extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
-    private javax.swing.JPanel jPanel1;
-    private javax.swing.JPanel jPanel2;
+    private javax.swing.JMenuItem adClientButton;
+    private javax.swing.JMenu jMenu1;
+    private javax.swing.JMenu jMenu2;
+    private javax.swing.JMenuBar jMenuBar1;
     // End of variables declaration//GEN-END:variables
 }
