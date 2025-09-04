@@ -18,6 +18,7 @@ public class FrameClient extends javax.swing.JInternalFrame {
     public FrameClient(String nombre, String id) {
         initComponents();
 
+        jLabel7.setVisible(false);
         this.nombre = nombre;
         this.id = id;
         setTitle(nombre);     // establece el título solo con el nombre
@@ -70,10 +71,58 @@ public class FrameClient extends javax.swing.JInternalFrame {
             jLabel7.setForeground(new java.awt.Color(0, 128, 0)); // verde
             // aquí podrías guardar el destinatario, si lo necesitas
             // this.currentRecipientId = target;
+            try {
+                CryptoKit.Keys keys = CryptoKit.derive(this.id, target);
+
+                // Mostrar la llave AES (Base64 para que sea legible)
+                aesKeyField.setText(
+                        java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
+                );
+
+                // Mostrar la llave HMAC (Base64)
+                aesKeyField1.setText(
+                        java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
+                );
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                aesKeyField.setText("Error generando AES");
+                aesKeyField1.setText("Error generando HMAC");
+            }
         } else {
             jLabel7.setText("No encontrado");
             jLabel7.setForeground(java.awt.Color.RED);
         }
+
+        FrameClient receptor = ClientRegistry.get().get(target);
+        try {
+            CryptoKit.Keys keys = CryptoKit.derive(this.id, target);
+
+            aesKeyField.setText(
+                    java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
+            );
+            aesKeyField1.setText(
+                    java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
+            );
+
+            // También mostrar en el cliente receptor
+            CryptoKit.Keys keysForReceptor = CryptoKit.derive(target, this.id);
+            receptor.showKeys(keysForReceptor);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            aesKeyField.setText("Error AES");
+            aesKeyField1.setText("Error HMAC");
+        }
+    }
+
+    public void showKeys(CryptoKit.Keys keys) {
+        aesKeyField.setText(
+                java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
+        );
+        aesKeyField1.setText(
+                java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
+        );
     }
 
     public String getNombre() {
@@ -307,19 +356,28 @@ public class FrameClient extends javax.swing.JInternalFrame {
             return;
         }
 
-        // (Aquí podrías insertar tu ventana interceptora antes de entregar)
-        receptor.receiveMessage(this.id.toLowerCase(), this.nombre, msg);
+        try {
+            // Cifrar mensaje + HMAC
+            String packet = CryptoKit.encryptThenMac(msg, this.id, target);
 
-        // Confirma localmente
-        appendInbox("(tú → " + target + "): " + msg);
-        txtField.setText("");
-        showStatus("Enviado", new java.awt.Color(0, 128, 0));
+            // Pasar a FrameMITM
+            FrameMITM mitm = new FrameMITM();
+            MainInterface.jDesktopPane_menu.add(mitm);
+            mitm.setVisible(true);
+
+            mitm.setPacket(this.id, target, packet, msg, receptor); // método que debes crear
+
+        } catch (Exception e) {
+            showStatus("Error al cifrar", java.awt.Color.RED);
+            e.printStackTrace();
+        }
+
     }
 
     public void receiveMessage(String fromId, String fromName, String msg) {
         // Asegura actualización en el EDT
         javax.swing.SwingUtilities.invokeLater(() -> {
-            appendInbox(fromName + " (" + fromId + "): " + msg);
+            appendInbox(fromName + ": " + msg);
         });
     }
 
@@ -333,8 +391,13 @@ public class FrameClient extends javax.swing.JInternalFrame {
     }
 
     private void showStatus(String text, java.awt.Color color) {
-        jLabel7.setText(text);
-        jLabel7.setForeground(color);
+        if (text == null || text.isEmpty()) {
+            jLabel7.setVisible(false); // si no hay texto, ocultar
+        } else {
+            jLabel7.setText(text);
+            jLabel7.setForeground(color);
+            jLabel7.setVisible(true); // solo mostrar si hay texto
+        }
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables

@@ -30,6 +30,8 @@ public class MainInterface extends javax.swing.JFrame {
         int alto = java.awt.Toolkit.getDefaultToolkit().getScreenSize().height;
         this.jDesktopPane_menu.setBounds(0, 0, ancho, (alto - 110));
         this.add(jDesktopPane_menu);
+
+
     }
 
     /**

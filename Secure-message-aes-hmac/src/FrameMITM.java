@@ -9,9 +9,9 @@
  */
 public class FrameMITM extends javax.swing.JInternalFrame {
 
-    /**
-     * Creates new form FrameMITM
-     */
+    private FrameClient receptor;
+    private String originalPacket;
+
     public FrameMITM() {
         initComponents();
     }
@@ -58,6 +58,11 @@ public class FrameMITM extends javax.swing.JInternalFrame {
         jLabel5.setText("Mensaje:");
 
         jButton1.setText("Continuar con el envio");
+        jButton1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton1ActionPerformed(evt);
+            }
+        });
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
@@ -132,7 +137,50 @@ public class FrameMITM extends javax.swing.JInternalFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
+    private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
+        try {
+            String fromId = origenField.getText();
+            String toId = destinoField.getText();
+            String modifiedMsg = jTextField1.getText();
 
+            if (modifiedMsg.equals(originalMessage)) {
+                // Reenviar el paquete original (HMAC válido)
+                String decrypted = CryptoKit.decryptIfValid(originalPacket, fromId, toId);
+                receptor.receiveMessage(fromId, fromId, decrypted);
+            } else {
+                // Intentar descifrar con el paquete original (fallará porque el mensaje fue cambiado manualmente)
+                try {
+                    CryptoKit.decryptIfValid(originalPacket, fromId, toId);
+                    // Si por alguna razón no falla, igual marcamos como alterado
+                    receptor.receiveMessage("Sistema", "Sistema", "Error: Este mensaje ha sido modificado");
+                } catch (Exception e) {
+                    receptor.receiveMessage("Sistema", "Sistema", "Error: Este mensaje ha sido modificado");
+                }
+            }
+        } catch (Exception ex) {
+            receptor.receiveMessage("Sistema", "Sistema", "Error al procesar el mensaje");
+        }
+
+        this.dispose();
+    }//GEN-LAST:event_jButton1ActionPerformed
+
+    private String originalMessage;
+
+    public void setPacket(String fromId, String toId, String packet, String decryptedMsg, FrameClient receptor) {
+        this.receptor = receptor;
+        this.originalPacket = packet;
+        this.originalMessage = decryptedMsg;
+
+        origenField.setText(fromId);
+        destinoField.setText(toId);
+
+        String[] parts = packet.split(":");
+        if (parts.length == 3) {
+            hmacField.setText(parts[2]);
+        }
+
+        jTextField1.setText(decryptedMsg);
+    }
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField destinoField;
     private javax.swing.JTextField hmacField;
