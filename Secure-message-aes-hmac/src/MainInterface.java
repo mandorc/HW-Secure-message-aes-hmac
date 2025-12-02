@@ -21,7 +21,7 @@ public class MainInterface extends javax.swing.JFrame {
 
         this.setExtendedState(this.MAXIMIZED_BOTH);
         this.setLocationRelativeTo(null);
-        this.setTitle("Sistema de Ventas");
+        this.setTitle("MSN INAOE");
 
         this.setLayout(null);
         jDesktopPane_menu = new JDesktopPane();
@@ -92,7 +92,7 @@ public class MainInterface extends javax.swing.JFrame {
             );
 
             if (nombre == null) {
-                return; // cancelado
+                return; // canceló
             }
 
             nombre = nombre.trim();
@@ -109,39 +109,59 @@ public class MainInterface extends javax.swing.JFrame {
             );
         }
 
-        // 2) Generar 5 dígitos aleatorios
+        // 2) Preguntar protocolo preferido
+        String[] opciones = {
+            "Clásico (AES-CBC + HMAC)",
+            "Post-Quantum (Kyber-512 + AES-GCM)"
+        };
+
+        String seleccion = (String) JOptionPane.showInputDialog(
+                this,
+                "Selecciona el protocolo preferido para este usuario:",
+                "Protocolo",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                opciones,
+                opciones[0]
+        );
+
+        if (seleccion == null) {
+            return; // canceló
+        }
+
+        ProtocolType pref;
+        if (seleccion.startsWith("Clásico")) {
+            pref = ProtocolType.CLASSIC;
+        } else {
+            pref = ProtocolType.KYBER_PQ;
+        }
+
+        // 3) Generar 5 dígitos aleatorios
         int n = ThreadLocalRandom.current().nextInt(100000);
         String sufijo = String.format("%05d", n);
 
-        // 3) Construir ID
+        // 4) Construir ID
         String id = nombre.toLowerCase() + sufijo;
 
-        // =====================================================================
-        // 3.5) GENERAR CERTIFICADO PARA ESTE USUARIO  <<<< PARTE IMPORTANTE
-        // =====================================================================
+        // 5) Generar certificado (RSA) - NO depende del protocolo
         try {
             CertManager.UserCertInfo info
                     = CertManager.ensureUserCertificate(id, nombre);
-
-            // Mensaje opcional para verificar que se generó
-            System.out.println("Certificado generado:");
-            System.out.println("Keystore: " + info.keystorePath);
-            System.out.println("Certificado: " + info.certPath);
-
+            System.out.println("Certificado generado para " + id
+                    + " en " + info.certPath);
         } catch (Exception e) {
             e.printStackTrace();
             JOptionPane.showMessageDialog(
                     this,
                     "No se pudo generar el certificado para el usuario " + id,
-                    "Error",
+                    "Error de certificado",
                     JOptionPane.ERROR_MESSAGE
             );
-            return; // opcional: si falla, no crear usuario
+            return;
         }
-        // =====================================================================
 
-        // 4) Crear y mostrar el Internal Frame
-        FrameClient frameCliente = new FrameClient(nombre, id);
+        // 6) Crear y mostrar el Internal Frame, pasando el protocolo elegido
+        FrameClient frameCliente = new FrameClient(nombre, id, pref);
         jDesktopPane_menu.add(frameCliente);
         frameCliente.setVisible(true);
     }//GEN-LAST:event_adClientButtonActionPerformed

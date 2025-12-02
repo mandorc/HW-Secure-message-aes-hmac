@@ -16,8 +16,14 @@ public class FrameClient extends javax.swing.JInternalFrame {
     private String nombre;
     private String id;
 
-    public FrameClient(String nombre, String id) {
+    private ProtocolType preferredProtocol;  // el que eligió al crearse
+    private ProtocolType sessionProtocol;    // el que se usa en ESTA conversación
+
+    public FrameClient(String nombre, String id, ProtocolType preferredProtocol) {
         initComponents();
+
+        this.preferredProtocol = preferredProtocol;
+        this.sessionProtocol = preferredProtocol; // por defecto inicia usando su preferido
 
         jLabel7.setVisible(false);
         this.nombre = nombre;
@@ -56,64 +62,81 @@ public class FrameClient extends javax.swing.JInternalFrame {
         target = target.trim().toLowerCase();
 
         if (target.isEmpty()) {
-            jLabel7.setText("Escribe un ID");
-            jLabel7.setForeground(java.awt.Color.RED);
+            showStatus("Escribe un ID", java.awt.Color.RED);
             return;
         }
-        if (target.equals(this.id)) {
-            jLabel7.setText("Es tu propio ID");
-            jLabel7.setForeground(java.awt.Color.ORANGE);
+        if (target.equals(this.id.toLowerCase())) {
+            showStatus("Es tu propio ID", java.awt.Color.ORANGE);
             return;
         }
 
         boolean exists = ClientRegistry.get().exists(target);
-        if (exists) {
-            jLabel7.setText("Disponible");
-            jLabel7.setForeground(new java.awt.Color(0, 128, 0)); // verde
-            // aquí podrías guardar el destinatario, si lo necesitas
-            // this.currentRecipientId = target;
-            try {
+        if (!exists) {
+            showStatus("Destinatario no encontrado", java.awt.Color.RED);
+            return;
+        }
+
+        FrameClient receptor = ClientRegistry.get().get(target);
+        if (receptor == null) {
+            showStatus("Destinatario no encontrado", java.awt.Color.RED);
+            return;
+        }
+
+        // -------------------------------
+        // Negociación de protocolo
+        // -------------------------------
+        ProtocolType remotePref = receptor.getPreferredProtocol();
+        ProtocolType myPref = this.preferredProtocol;
+
+        ProtocolType usedProtocol;
+
+        if (myPref == remotePref) {
+            usedProtocol = myPref;
+            this.sessionProtocol = usedProtocol;
+            showStatus("Protocolo en común: " + usedProtocol,
+                    new java.awt.Color(0, 128, 0));
+        } else {
+            usedProtocol = remotePref;       // me adapto al otro
+            this.sessionProtocol = usedProtocol;
+            showStatus("Se cambió el protocolo a " + usedProtocol
+                    + " para comunicarse con " + target,
+                    java.awt.Color.BLUE);
+        }
+
+        try {
+            if (usedProtocol == ProtocolType.CLASSIC) {
+                // ======== MODO CLÁSICO: tu esquema actual ========
                 CryptoKit.Keys keys = CryptoKit.derive(this.id, target);
 
-                // Mostrar la llave AES (Base64 para que sea legible)
                 aesKeyField.setText(
                         java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
                 );
-
-                // Mostrar la llave HMAC (Base64)
                 aesKeyField1.setText(
                         java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
                 );
 
-            } catch (Exception e) {
-                e.printStackTrace();
-                aesKeyField.setText("Error generando AES");
-                aesKeyField1.setText("Error generando HMAC");
+                CryptoKit.Keys keysForReceptor = CryptoKit.derive(target, this.id);
+                receptor.showKeys(keysForReceptor);
+
+            } else if (usedProtocol == ProtocolType.KYBER_PQ) {
+                // ======== MODO "POST-QUANTUM" SIMULADO ========
+                javax.crypto.SecretKey aes
+                        = CryptoKitPQSim.deriveAesKey(this.id, target);
+
+                aesKeyField.setText(
+                        java.util.Base64.getEncoder().encodeToString(aes.getEncoded())
+                );
+                aesKeyField1.setText("AES-GCM (simulado PQ)");
+
+                // Si quisieras, podrías también mostrar algo en el receptor,
+                // pero como showStatus es privado aquí, lo dejamos así.
             }
-        } else {
-            jLabel7.setText("No encontrado");
-            jLabel7.setForeground(java.awt.Color.RED);
-        }
-
-        FrameClient receptor = ClientRegistry.get().get(target);
-        try {
-            CryptoKit.Keys keys = CryptoKit.derive(this.id, target);
-
-            aesKeyField.setText(
-                    java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
-            );
-            aesKeyField1.setText(
-                    java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
-            );
-
-            // También mostrar en el cliente receptor
-            CryptoKit.Keys keysForReceptor = CryptoKit.derive(target, this.id);
-            receptor.showKeys(keysForReceptor);
 
         } catch (Exception e) {
             e.printStackTrace();
-            aesKeyField.setText("Error AES");
-            aesKeyField1.setText("Error HMAC");
+            aesKeyField.setText("Error derivando claves");
+            aesKeyField1.setText("Error derivando claves");
+            showStatus("Error al derivar claves", java.awt.Color.RED);
         }
     }
 
@@ -393,21 +416,32 @@ public class FrameClient extends javax.swing.JInternalFrame {
         }
 
         try {
-            // Cifrar mensaje + HMAC
-            String packet = CryptoKit.encryptThenMac(msg, this.id, target);
+            String packet;
+
+            if (sessionProtocol == ProtocolType.CLASSIC) {
+                // ================= MODO CLÁSICO =================
+                packet = CryptoKit.encryptThenMac(msg, this.id, target);
+
+            } else if (sessionProtocol == ProtocolType.KYBER_PQ) {
+                // ================= MODO PQ SIMULADO =================
+                packet = CryptoKitPQSim.encryptPQ(msg, this.id, target);
+
+            } else {
+                showStatus("Protocolo de sesión no definido", java.awt.Color.RED);
+                return;
+            }
 
             // Pasar a FrameMITM
             FrameMITM mitm = new FrameMITM();
             MainInterface.jDesktopPane_menu.add(mitm);
             mitm.setVisible(true);
 
-            mitm.setPacket(this.id, target, packet, msg, receptor); // método que debes crear
+            mitm.setPacket(this.id, target, packet, msg, receptor);
 
         } catch (Exception e) {
             showStatus("Error al cifrar", java.awt.Color.RED);
             e.printStackTrace();
         }
-
     }
 
     public void receiveMessage(String fromId, String fromName, String msg) {
@@ -435,6 +469,15 @@ public class FrameClient extends javax.swing.JInternalFrame {
             jLabel7.setVisible(true); // solo mostrar si hay texto
         }
     }
+
+    public ProtocolType getPreferredProtocol() {
+        return preferredProtocol;
+    }
+
+    public ProtocolType getSessionProtocol() {
+        return sessionProtocol;
+    }
+
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField aesKeyField;

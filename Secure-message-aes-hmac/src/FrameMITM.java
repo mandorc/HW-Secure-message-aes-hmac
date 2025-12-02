@@ -139,30 +139,59 @@ public class FrameMITM extends javax.swing.JInternalFrame {
 
     private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
         try {
-            String fromId = origenField.getText();
-            String toId = destinoField.getText();
+            String fromId = origenField.getText().trim();
+            String toId = destinoField.getText().trim();
             String modifiedMsg = jTextField1.getText();
 
+            if (modifiedMsg == null) {
+                modifiedMsg = "";
+            }
+
             if (modifiedMsg.equals(originalMessage)) {
-                // Reenviar el paquete original (HMAC válido)
-                String decrypted = CryptoKit.decryptIfValid(originalPacket, fromId, toId);
+                // Reenviar el paquete original (sin modificar)
+                String decrypted = decryptPacketByProtocol(originalPacket, fromId, toId);
                 receptor.receiveMessage(fromId, fromId, decrypted);
             } else {
-                // Intentar descifrar con el paquete original (fallará porque el mensaje fue cambiado manualmente)
+                // El atacante "modificó" el texto: se marca como alterado
                 try {
-                    CryptoKit.decryptIfValid(originalPacket, fromId, toId);
-                    // Si por alguna razón no falla, igual marcamos como alterado
-                    receptor.receiveMessage("Sistema", "Sistema", "Error: Este mensaje ha sido modificado");
+                    // Intentamos descifrar solo para verificar integridad/autenticidad
+                    decryptPacketByProtocol(originalPacket, fromId, toId);
+                    // aunque descifre bien, el hecho de que cambió el contenido visible
+                    // ya se considera manipulación.
+                    receptor.receiveMessage("Sistema", "Sistema",
+                            "Error: Este mensaje ha sido modificado");
                 } catch (Exception e) {
-                    receptor.receiveMessage("Sistema", "Sistema", "Error: Este mensaje ha sido modificado");
+                    receptor.receiveMessage("Sistema", "Sistema",
+                            "Error: Este mensaje ha sido modificado");
                 }
             }
         } catch (Exception ex) {
-            receptor.receiveMessage("Sistema", "Sistema", "Error al procesar el mensaje");
+            receptor.receiveMessage("Sistema", "Sistema",
+                    "Error al procesar el mensaje");
+            ex.printStackTrace();
         }
 
         this.dispose();
     }//GEN-LAST:event_jButton1ActionPerformed
+
+    private String decryptPacketByProtocol(String packet, String fromId, String toId) throws Exception {
+        FrameClient sender = ClientRegistry.get().get(fromId.toLowerCase());
+
+        ProtocolType proto = ProtocolType.CLASSIC; // por defecto
+        if (sender != null) {
+            proto = sender.getSessionProtocol();
+        }
+
+        if (proto == ProtocolType.CLASSIC) {
+            // Esquema original: AES-CBC + HMAC
+            return CryptoKit.decryptIfValid(packet, fromId, toId);
+        } else if (proto == ProtocolType.KYBER_PQ) {
+            // Esquema "post-quantum" simulado: AES-GCM
+            return CryptoKitPQSim.decryptPQ(packet, fromId, toId);
+        } else {
+            throw new SecurityException("Protocolo de sesión desconocido");
+        }
+    }
 
     private String originalMessage;
 
