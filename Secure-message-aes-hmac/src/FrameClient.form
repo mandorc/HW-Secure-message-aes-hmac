@@ -83,6 +83,8 @@
                           <Component id="txtField" alignment="0" max="32767" attributes="0"/>
                           <Group type="102" alignment="1" attributes="0">
                               <Component id="deleteUser" min="-2" max="-2" attributes="0"/>
+                              <EmptySpace max="-2" attributes="0"/>
+                              <Component id="viewCertButton" min="-2" max="-2" attributes="0"/>
                               <EmptySpace max="32767" attributes="0"/>
                               <Component id="sendButton" min="-2" max="-2" attributes="0"/>
                           </Group>
@@ -155,6 +157,7 @@
                       <Group type="103" groupAlignment="3" attributes="0">
                           <Component id="sendButton" alignment="3" min="-2" max="-2" attributes="0"/>
                           <Component id="deleteUser" alignment="3" min="-2" max="-2" attributes="0"/>
+                          <Component id="viewCertButton" alignment="3" min="-2" max="-2" attributes="0"/>
                       </Group>
                       <EmptySpace max="-2" attributes="0"/>
                   </Group>
@@ -256,6 +259,14 @@
               </Properties>
             </Component>
             <Component class="javax.swing.JTextField" name="aesKeyField1">
+            </Component>
+            <Component class="javax.swing.JButton" name="viewCertButton">
+              <Properties>
+                <Property name="text" type="java.lang.String" value="Certificado"/>
+              </Properties>
+              <Events>
+                <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="viewCertButtonActionPerformed"/>
+              </Events>
             </Component>
           </SubComponents>
         </Container>

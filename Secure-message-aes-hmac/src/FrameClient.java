@@ -1,4 +1,5 @@
 
+import java.security.cert.X509Certificate;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
 
@@ -162,6 +163,7 @@ public class FrameClient extends javax.swing.JInternalFrame {
         jLabel7 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
         aesKeyField1 = new javax.swing.JTextField();
+        viewCertButton = new javax.swing.JButton();
 
         jPanel2.setBackground(new java.awt.Color(255, 255, 255));
 
@@ -201,6 +203,13 @@ public class FrameClient extends javax.swing.JInternalFrame {
 
         jLabel8.setText("Llave HMAC:");
 
+        viewCertButton.setText("Certificado");
+        viewCertButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                viewCertButtonActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
@@ -219,6 +228,8 @@ public class FrameClient extends javax.swing.JInternalFrame {
                     .addComponent(txtField)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
                         .addComponent(deleteUser)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(viewCertButton)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addComponent(sendButton))
                     .addComponent(jLabel6, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -276,7 +287,8 @@ public class FrameClient extends javax.swing.JInternalFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(sendButton)
-                    .addComponent(deleteUser))
+                    .addComponent(deleteUser)
+                    .addComponent(viewCertButton))
                 .addContainerGap())
         );
 
@@ -318,6 +330,30 @@ public class FrameClient extends javax.swing.JInternalFrame {
     private void sendButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sendButtonActionPerformed
         // TODO add your handling code here:
     }//GEN-LAST:event_sendButtonActionPerformed
+
+    private void viewCertButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_viewCertButtonActionPerformed
+        openCertDetails();
+    }//GEN-LAST:event_viewCertButtonActionPerformed
+
+    private void openCertDetails() {
+        try {
+            X509Certificate cert = CertManager.getUserCertificate(this.id);
+
+            CertDetailsFrame cf = new CertDetailsFrame(this.id, cert);
+            MainInterface.jDesktopPane_menu.add(cf);
+            cf.setVisible(true);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            javax.swing.JOptionPane.showMessageDialog(
+                    this,
+                    "No se pudo cargar el certificado para el usuario " + this.id
+                    + "\nAsegúrate de que se generó correctamente.",
+                    "Error de certificado",
+                    javax.swing.JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
 
     private void setupFields() {
         username.setText(this.nombre);
@@ -421,5 +457,6 @@ public class FrameClient extends javax.swing.JInternalFrame {
     private javax.swing.JTextField txtField;
     private javax.swing.JLabel userID;
     private javax.swing.JLabel username;
+    private javax.swing.JButton viewCertButton;
     // End of variables declaration//GEN-END:variables
 }
