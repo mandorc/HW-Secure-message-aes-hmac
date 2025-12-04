@@ -1,5 +1,9 @@
 
+import java.awt.Color;
+import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
 
@@ -48,95 +52,124 @@ public class FrameClient extends javax.swing.JInternalFrame {
         });
 
         // Acción del botón "Comprobar"
-        checkAvalability.addActionListener(evt -> checkAvailabilityAction());
+        checkAvalability.addActionListener(evt -> {
+            try {
+                checkAvailabilityAction();
+            } catch (Exception ex) {
+                Logger.getLogger(FrameClient.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        });
         sendButton.addActionListener(evt -> sendMessageAction());
         deleteUser.addActionListener(evt -> dispose()); // cierra y dispara el unregister
 
     }
 
-    private void checkAvailabilityAction() {
+    private void checkAvailabilityAction() throws Exception {
         String target = destUser.getText();
         if (target == null) {
             target = "";
         }
         target = target.trim().toLowerCase();
 
+        // Validaciones básicas
         if (target.isEmpty()) {
-            showStatus("Escribe un ID", java.awt.Color.RED);
+            showStatus("Escribe un ID", Color.RED);
             return;
         }
         if (target.equals(this.id.toLowerCase())) {
-            showStatus("Es tu propio ID", java.awt.Color.ORANGE);
+            showStatus("Es tu propio ID", Color.ORANGE);
             return;
         }
 
-        boolean exists = ClientRegistry.get().exists(target);
-        if (!exists) {
-            showStatus("Destinatario no encontrado", java.awt.Color.RED);
+        // Ver si el cliente existe
+        if (!ClientRegistry.get().exists(target)) {
+            showStatus("No encontrado", Color.RED);
             return;
         }
 
         FrameClient receptor = ClientRegistry.get().get(target);
         if (receptor == null) {
-            showStatus("Destinatario no encontrado", java.awt.Color.RED);
+            showStatus("Destinatario no encontrado", Color.RED);
             return;
         }
 
-        // -------------------------------
-        // Negociación de protocolo
-        // -------------------------------
-        ProtocolType remotePref = receptor.getPreferredProtocol();
-        ProtocolType myPref = this.preferredProtocol;
+        // --- Validar certificados de ambos lados ---
+        X509Certificate myCert;
+        X509Certificate theirCert;
+        try {
+            myCert = CertManager.validateUserCertificate(this.id);
+            theirCert = CertManager.validateUserCertificate(target);
+        } catch (IllegalStateException ex) {
+            ex.printStackTrace();
+            showStatus("Error de certificado: " + ex.getMessage(), Color.RED);
+            return;
+        }
 
+        // --- Negociación de protocolo ---
+        ProtocolType myPref = this.preferredProtocol;
+        ProtocolType remotePref = receptor.getPreferredProtocol();
         ProtocolType usedProtocol;
 
         if (myPref == remotePref) {
             usedProtocol = myPref;
-            this.sessionProtocol = usedProtocol;
-            showStatus("Protocolo en común: " + usedProtocol,
-                    new java.awt.Color(0, 128, 0));
         } else {
-            usedProtocol = remotePref;       // me adapto al otro
-            this.sessionProtocol = usedProtocol;
+            // me adapto al preferido del otro
+            usedProtocol = remotePref;
             showStatus("Se cambió el protocolo a " + usedProtocol
                     + " para comunicarse con " + target,
-                    java.awt.Color.BLUE);
+                    Color.BLUE);
         }
+        this.sessionProtocol = usedProtocol;
 
         try {
             if (usedProtocol == ProtocolType.CLASSIC) {
-                // ======== MODO CLÁSICO: tu esquema actual ========
-                CryptoKit.Keys keys = CryptoKit.derive(this.id, target);
+                // ==========================================================
+                //  MODO CLÁSICO: RSA-KEM + AES-CBC / HMAC (canal simétrico)
+                // ==========================================================
 
-                aesKeyField.setText(
-                        java.util.Base64.getEncoder().encodeToString(keys.aes.getEncoded())
-                );
-                aesKeyField1.setText(
-                        java.util.Base64.getEncoder().encodeToString(keys.mac.getEncoded())
-                );
+                // 1) Emisor (this) ejecuta el KEM hacia el receptor,
+                //    usando la llave pública RSA del certificado de 'target'
+                RsaKemUtil.KemResult kem
+                        = RsaKemUtil.encapsulate(theirCert.getPublicKey());
 
-                CryptoKit.Keys keysForReceptor = CryptoKit.derive(target, this.id);
-                receptor.showKeys(keysForReceptor);
+                // 2) Derivar claves AES + HMAC a partir del secreto maestro K
+                CryptoKit.Keys myKeys = CryptoKit.deriveFromMaster(kem.master);
+
+                // 3) Registrar claves de sesión para este par
+                SessionKeyRegistry.get().put(this.id, target, myKeys);
+
+                // 4) Avisar al receptor para que decapsule y derive sus claves
+                receptor.acceptClassicKemFrom(this.id, kem.encMaster);
+
+                // 5) Mostrar las claves en la UI de este cliente
+                showKeys(myKeys);
+                showStatus("Sesión CLASSIC (RSA-KEM) establecida con " + target,
+                        new Color(0, 128, 0)); // verde
 
             } else if (usedProtocol == ProtocolType.KYBER_PQ) {
-                // ======== MODO "POST-QUANTUM" SIMULADO ========
+                // ==========================================================
+                //  MODO PQ SIMULADO: "Kyber-512 + AES-GCM"
+                //  (claves derivadas con CryptoKitPQSim)
+                // ==========================================================
+
                 javax.crypto.SecretKey aes
                         = CryptoKitPQSim.deriveAesKey(this.id, target);
 
                 aesKeyField.setText(
                         java.util.Base64.getEncoder().encodeToString(aes.getEncoded())
                 );
+                // Aquí no hay HMAC aparte: AES-GCM ya es autenticado
                 aesKeyField1.setText("AES-GCM (simulado PQ)");
 
-                // Si quisieras, podrías también mostrar algo en el receptor,
-                // pero como showStatus es privado aquí, lo dejamos así.
+                showStatus("Sesión PQ (Kyber-512 simulado) establecida con " + target,
+                        new Color(0, 128, 0));
             }
 
         } catch (Exception e) {
             e.printStackTrace();
             aesKeyField.setText("Error derivando claves");
             aesKeyField1.setText("Error derivando claves");
-            showStatus("Error al derivar claves", java.awt.Color.RED);
+            showStatus("Error al derivar claves", Color.RED);
         }
     }
 
@@ -187,6 +220,8 @@ public class FrameClient extends javax.swing.JInternalFrame {
         jLabel8 = new javax.swing.JLabel();
         aesKeyField1 = new javax.swing.JTextField();
         viewCertButton = new javax.swing.JButton();
+        btnFirmarActionPerformed = new javax.swing.JButton();
+        btnVerificarActionPerformed = new javax.swing.JButton();
 
         jPanel2.setBackground(new java.awt.Color(255, 255, 255));
 
@@ -233,6 +268,20 @@ public class FrameClient extends javax.swing.JInternalFrame {
             }
         });
 
+        btnFirmarActionPerformed.setText("F");
+        btnFirmarActionPerformed.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnFirmarActionPerformedActionPerformed(evt);
+            }
+        });
+
+        btnVerificarActionPerformed.setText("V");
+        btnVerificarActionPerformed.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnVerificarActionPerformedActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
@@ -247,13 +296,17 @@ public class FrameClient extends javax.swing.JInternalFrame {
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(destUser, javax.swing.GroupLayout.PREFERRED_SIZE, 163, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(checkAvalability, javax.swing.GroupLayout.DEFAULT_SIZE, 146, Short.MAX_VALUE))
+                        .addComponent(checkAvalability, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                     .addComponent(txtField)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
                         .addComponent(deleteUser)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(viewCertButton)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(btnFirmarActionPerformed)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(btnVerificarActionPerformed)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 39, Short.MAX_VALUE)
                         .addComponent(sendButton))
                     .addComponent(jLabel6, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addComponent(jLabel7, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -311,7 +364,9 @@ public class FrameClient extends javax.swing.JInternalFrame {
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(sendButton)
                     .addComponent(deleteUser)
-                    .addComponent(viewCertButton))
+                    .addComponent(viewCertButton)
+                    .addComponent(btnFirmarActionPerformed)
+                    .addComponent(btnVerificarActionPerformed))
                 .addContainerGap())
         );
 
@@ -330,7 +385,7 @@ public class FrameClient extends javax.swing.JInternalFrame {
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 399, Short.MAX_VALUE)
+            .addGap(0, 424, Short.MAX_VALUE)
             .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                 .addGroup(layout.createSequentialGroup()
                     .addGap(0, 0, Short.MAX_VALUE)
@@ -357,6 +412,87 @@ public class FrameClient extends javax.swing.JInternalFrame {
     private void viewCertButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_viewCertButtonActionPerformed
         openCertDetails();
     }//GEN-LAST:event_viewCertButtonActionPerformed
+
+    private void btnFirmarActionPerformedActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnFirmarActionPerformedActionPerformed
+        try {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+            chooser.setDialogTitle("Selecciona el documento a firmar");
+
+            if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                java.io.File file = chooser.getSelectedFile();
+                java.nio.file.Path docPath = file.toPath();
+
+                // Firmar usando la llave privada RSA de este usuario
+                java.nio.file.Path sigPath = DocumentSigner.signFileForUser(this.id, docPath);
+
+                javax.swing.JOptionPane.showMessageDialog(this,
+                        "Documento firmado correctamente.\nFirma guardada en:\n" + sigPath.toString(),
+                        "Firma generada",
+                        javax.swing.JOptionPane.INFORMATION_MESSAGE);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Error al firmar el documento: " + e.getMessage(),
+                    "Error",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
+    }//GEN-LAST:event_btnFirmarActionPerformedActionPerformed
+
+    private void btnVerificarActionPerformedActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnVerificarActionPerformedActionPerformed
+        try {
+            javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+
+            // 1) Seleccionar documento
+            chooser.setDialogTitle("Selecciona el documento original");
+            if (chooser.showOpenDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            java.nio.file.Path docPath = chooser.getSelectedFile().toPath();
+
+            // 2) Seleccionar archivo de firma
+            chooser.setDialogTitle("Selecciona el archivo de firma (.sig)");
+            if (chooser.showOpenDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            java.nio.file.Path sigPath = chooser.getSelectedFile().toPath();
+
+            // 3) Seleccionar certificado (.crt) del firmante
+            chooser.setDialogTitle("Selecciona el certificado del firmante (.crt)");
+            if (chooser.showOpenDialog(this) != javax.swing.JFileChooser.APPROVE_OPTION) {
+                return;
+            }
+            java.nio.file.Path crtPath = chooser.getSelectedFile().toPath();
+
+            // Cargar el certificado desde el .crt
+            java.security.cert.CertificateFactory cf
+                    = java.security.cert.CertificateFactory.getInstance("X.509");
+            try (java.io.InputStream in = java.nio.file.Files.newInputStream(crtPath)) {
+                java.security.cert.X509Certificate cert
+                        = (java.security.cert.X509Certificate) cf.generateCertificate(in);
+
+                boolean ok = DocumentSigner.verifyFileWithCert(docPath, sigPath, cert);
+
+                if (ok) {
+                    javax.swing.JOptionPane.showMessageDialog(this,
+                            "Firma VÁLIDA.\nEl documento no ha sido modificado y fue firmado con la llave privada correspondiente a ese certificado.",
+                            "Firma válida",
+                            javax.swing.JOptionPane.INFORMATION_MESSAGE);
+                } else {
+                    javax.swing.JOptionPane.showMessageDialog(this,
+                            "Firma NO válida.\nEl documento ha sido modificado o no corresponde al certificado seleccionado.",
+                            "Firma inválida",
+                            javax.swing.JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            javax.swing.JOptionPane.showMessageDialog(this,
+                    "Error al verificar la firma: " + e.getMessage(),
+                    "Error",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+        }
+    }//GEN-LAST:event_btnVerificarActionPerformedActionPerformed
 
     private void openCertDetails() {
         try {
@@ -478,11 +614,37 @@ public class FrameClient extends javax.swing.JInternalFrame {
         return sessionProtocol;
     }
 
+    public void acceptClassicKemFrom(String fromId, byte[] encMaster) {
+        try {
+            // 1) Obtener mi llave privada (soy el receptor)
+            PrivateKey priv = CertManager.getUserPrivateKey(this.id);
+
+            // 2) Decapsular: recuperar el secreto maestro
+            byte[] master = RsaKemUtil.decapsulate(encMaster, priv);
+
+            // 3) Derivar claves AES + HMAC a partir del maestro
+            CryptoKit.Keys keys = CryptoKit.deriveFromMaster(master);
+
+            // 4) Registrar claves de sesión para este par
+            SessionKeyRegistry.get().put(fromId, this.id, keys);
+
+            // 5) Mostrar en la UI
+            showKeys(keys);
+            showStatus("Sesión CLASSIC (RSA-KEM) establecida con " + fromId,
+                    new Color(0, 128, 0));
+        } catch (Exception e) {
+            e.printStackTrace();
+            showStatus("Error al completar RSA-KEM: " + e.getMessage(), Color.RED);
+        }
+    }
+
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JTextField aesKeyField;
     private javax.swing.JTextField aesKeyField1;
     private javax.swing.JLabel aesKeyLabel;
+    private javax.swing.JButton btnFirmarActionPerformed;
+    private javax.swing.JButton btnVerificarActionPerformed;
     private javax.swing.JButton checkAvalability;
     private javax.swing.JButton deleteUser;
     private javax.swing.JTextField destUser;

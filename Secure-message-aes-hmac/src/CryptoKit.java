@@ -52,7 +52,12 @@ public final class CryptoKit {
     }
 
     public static String encryptThenMac(String plaintext, String fromId, String toId) throws Exception {
-        Keys k = derive(fromId, toId);
+        // 1) intentar usar claves de sesión (KEM)
+        Keys k = SessionKeyRegistry.get().getKeys(fromId, toId);
+        if (k == null) {
+            // 2) si no hay sesión negociada, usar esquema viejo (derivación por IDs)
+            k = derive(fromId, toId);
+        }
 
         byte[] iv = new byte[16];
         new SecureRandom().nextBytes(iv);
@@ -82,7 +87,11 @@ public final class CryptoKit {
         byte[] ct = dec.decode(parts[1]);
         byte[] tag = dec.decode(parts[2]);
 
-        Keys k = derive(fromId, toId);
+        // Intentar usar claves de sesión; fallback a derive(...)
+        Keys k = SessionKeyRegistry.get().getKeys(fromId, toId);
+        if (k == null) {
+            k = derive(fromId, toId);
+        }
 
         Mac m = Mac.getInstance("HmacSHA256");
         m.init(k.mac);
@@ -101,5 +110,31 @@ public final class CryptoKit {
     }
 
     private CryptoKit() {
+    }
+
+    // Deriva claves AES (16 bytes) + HMAC (32 bytes) a partir de un secreto maestro
+    public static Keys deriveFromMaster(byte[] master) throws Exception {
+        SecretKeyFactory f = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+        // Pasamos el maestro como una "password" en hex solo para reusar PBKDF2
+        char[] pwd = bytesToHex(master).toCharArray();
+        PBEKeySpec spec = new PBEKeySpec(pwd, SALT, 50_000, (16 + 32) * 8);
+        byte[] kb = f.generateSecret(spec).getEncoded();
+
+        byte[] aesBytes = Arrays.copyOfRange(kb, 0, 16);
+        byte[] macBytes = Arrays.copyOfRange(kb, 16, 48);
+
+        SecretKey aes = new SecretKeySpec(aesBytes, "AES");
+        SecretKey mac = new SecretKeySpec(macBytes, "HmacSHA256");
+        return new Keys(aes, mac);
+    }
+
+    // helper para hex
+    private static String bytesToHex(byte[] b) {
+        StringBuilder sb = new StringBuilder(b.length * 2);
+        for (byte x : b) {
+            sb.append(String.format("%02x", x));
+        }
+        return sb.toString();
     }
 }

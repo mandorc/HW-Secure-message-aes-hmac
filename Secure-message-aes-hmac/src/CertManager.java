@@ -7,23 +7,32 @@
  *
  * @author armando
  */
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.Key;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.cert.X509Certificate;
 
 public class CertManager {
 
-    private static final String KEYSTORE_DIR = "certs";
+    static final String KEYSTORE_DIR = "certs";
     private static final String STOREPASS = "changeit";
     private static final String KEYALG = "RSA";
     private static final int KEYSIZE = 2048;
     private static final int VALIDITY_DAYS = 365;
 
     public static class UserCertInfo {
+
         public final Path keystorePath;
         public final Path certPath;
         public final String alias;
@@ -117,4 +126,55 @@ public class CertManager {
             return (X509Certificate) cf.generateCertificate(in);
         }
     }
+
+    public static X509Certificate validateUserCertificate(String userId) throws Exception {
+        X509Certificate cert = getUserCertificate(userId);
+        if (cert == null) {
+            throw new IllegalStateException("No existe el certificado para el usuario: " + userId);
+        }
+        try {
+            cert.checkValidity();
+            cert.verify(cert.getPublicKey());
+        } catch (Exception e) {
+            throw new IllegalStateException("Certificado inválido para " + userId + ": " + e.getMessage(), e);
+        }
+        return cert;
+    }
+
+    public static PrivateKey getUserPrivateKey(String userId) {
+        try {
+            String alias = userId.toLowerCase();
+
+            // MISMA carpeta y nombrado que en ensureUserCertificate
+            Path dir = Paths.get(KEYSTORE_DIR);
+            Path ksPath = dir.resolve(alias + ".jks");
+
+            if (!Files.exists(ksPath)) {
+                throw new IllegalStateException("No existe el keystore para el usuario: " + userId);
+            }
+
+            // Cargar el KeyStore .jks generado por keytool
+            KeyStore ks = KeyStore.getInstance("JKS");
+            try (InputStream in = Files.newInputStream(ksPath)) {
+                ks.load(in, STOREPASS.toCharArray());
+            }
+
+            // Recuperar la clave privada asociada al alias
+            Key key = ks.getKey(alias, STOREPASS.toCharArray());
+            if (key == null) {
+                throw new IllegalStateException("No se encontró una clave para el alias: " + alias);
+            }
+            if (!(key instanceof PrivateKey)) {
+                throw new IllegalStateException("La clave para el alias " + alias + " no es una PrivateKey");
+            }
+
+            return (PrivateKey) key;
+
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Error al cargar la llave privada de " + userId + ": " + e.getMessage(), e
+            );
+        }
+    }
+
 }
